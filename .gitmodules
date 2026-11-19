@@ -1,0 +1,5 @@
+[submodule "f2"]
+	path = f2
+	url = https://github.com/Johnserf-Seed/f2.git
+	branch = v0.0.1.8-pw3
+

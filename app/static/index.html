@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>抖音主页归档器</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, "Microsoft YaHei", sans-serif; }
+    body { margin: 0; background: #0d1117; color: #e6edf3; }
+    main { max-width: 900px; margin: 36px auto; padding: 0 20px; }
+    section { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 20px; margin: 16px 0; }
+    h1 { margin-bottom: 4px; } h2 { font-size: 18px; }
+    label { display: block; margin: 12px 0 6px; color: #b1bac4; }
+    input, textarea, select, button { box-sizing: border-box; width: 100%; border-radius: 7px; border: 1px solid #3d444d; padding: 10px; font: inherit; }
+    input, textarea, select { background: #0d1117; color: #e6edf3; }
+    button { margin-top: 14px; background: #238636; color: white; border: 0; cursor: pointer; font-weight: 600; }
+    button:hover { background: #2ea043; }
+    .muted { color: #8b949e; } .ok { color: #3fb950; } .bad { color: #f85149; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid #30363d; vertical-align: top; }
+    code { overflow-wrap: anywhere; }
+    progress { width: 180px; height: 14px; accent-color: #2ea043; }
+    .progress-text { white-space: nowrap; margin-top: 4px; color: #b1bac4; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>抖音主页归档器</h1>
+  <p class="muted">本地运行 · 登录态加密保存 · F2 下载</p>
+
+  <section>
+    <h2>1. 登录 Cookie</h2>
+    <p id="cookie-status" class="muted">正在检查…</p>
+    <p class="muted">必须复制 douyin.com 网络请求中的整个 <code>Cookie</code> 请求头；单个 <code>fg_uid</code> 或 Token 不够。</p>
+    <textarea id="cookie" rows="4" placeholder="粘贴完整 Cookie，例如应包含 sessionid/sessionid_ss/sid_guard 等多个字段；内容只发送到本机 127.0.0.1"></textarea>
+    <button onclick="saveCookie()">加密保存 Cookie</button>
+  </section>
+
+  <section>
+    <h2>2. 新建下载任务</h2>
+    <label for="profile">任意抖音分享文字或链接</label>
+    <textarea id="profile" rows="3">9- 长按复制此条消息，打开抖音搜索，查看TA的更多作品。 https\://v.douyin.com/qTGeqigk-dg/ 3@7.com :2pm</textarea>
+    <label for="mode">内容类型</label>
+    <select id="mode">
+      <option value="auto">自动识别（推荐）</option>
+      <option value="post">用户主页</option>
+      <option value="one">单个视频/图文</option>
+      <option value="mix">合集/短剧</option>
+    </select>
+    <label for="interval">日期范围</label>
+    <input id="interval" value="all" placeholder="all 或 2025-01-01|2026-12-31">
+    <p class="muted">日期范围只对用户主页模式生效。</p>
+    <label for="max-counts">最大作品数（0 表示全部）</label>
+    <input id="max-counts" type="number" min="0" value="0">
+    <button onclick="startTask()">开始下载</button>
+    <p id="message" class="muted"></p>
+  </section>
+
+  <section>
+    <h2>任务记录</h2>
+    <table><thead><tr><th>状态</th><th>类型</th><th>进度</th><th>链接</th><th>说明</th><th>时间</th></tr></thead><tbody id="tasks"></tbody></table>
+  </section>
+</main>
+<script>
+async function jsonFetch(url, options = {}) {
+  const response = await fetch(url, {headers: {'Content-Type': 'application/json'}, ...options});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || JSON.stringify(data));
+  return data;
+}
+async function refresh() {
+  const status = await jsonFetch('/api/status');
+  const el = document.getElementById('cookie-status');
+  el.textContent = status.cookie_configured ? '已配置登录态' : '尚未配置登录态';
+  el.className = status.cookie_configured ? 'ok' : 'bad';
+  const tasks = await jsonFetch('/api/tasks');
+  document.getElementById('tasks').innerHTML = tasks.map(t => {
+    const total = Number(t.total_items || 0);
+    const done = Number(t.processed_items || 0);
+    const progress = total > 0
+      ? `<progress max="${total}" value="${Math.min(done, total)}"></progress><div class="progress-text">${done}/${total} · 失败 ${Number(t.failed_items || 0)}</div>`
+      : `<div class="progress-text">${escapeHtml(t.stage || t.status)}</div>`;
+    const labels = {post: '主页', one: '单作品', mix: '合集'};
+    return `<tr><td>${escapeHtml(t.status)}</td><td>${labels[t.mode] || '-'}</td><td>${progress}</td><td><code>${escapeHtml(t.profile_url)}</code></td><td>${escapeHtml(t.message)}${t.current_item ? `<br><span class="muted">${escapeHtml(t.current_item)}</span>` : ''}</td><td>${new Date(t.updated_at).toLocaleString()}</td></tr>`;
+  }).join('');
+}
+async function saveCookie() {
+  try {
+    await jsonFetch('/api/settings/cookie', {method: 'POST', body: JSON.stringify({cookie: document.getElementById('cookie').value})});
+    document.getElementById('cookie').value = '';
+    await refresh();
+  } catch (error) { alert(error.message); }
+}
+async function startTask() {
+  const message = document.getElementById('message');
+  try {
+    const task = await jsonFetch('/api/tasks', {method: 'POST', body: JSON.stringify({profile: document.getElementById('profile').value, mode: document.getElementById('mode').value, interval: document.getElementById('interval').value, max_counts: Number(document.getElementById('max-counts').value)})});
+    message.textContent = `已识别为${task.detected_label}，任务已创建：${task.id}`;
+    await refresh();
+  } catch (error) { message.textContent = error.message; }
+}
+function escapeHtml(value) { const node = document.createElement('div'); node.textContent = value ?? ''; return node.innerHTML; }
+refresh(); setInterval(refresh, 1000);
+</script>
+</body>
+</html>
