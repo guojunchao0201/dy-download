@@ -15,6 +15,20 @@ git clone --recurse-submodules https://github.com/guojunchao0201/dy-download.git
 cd dy-download
 ```
 
+其中 `--recurse-submodules` 表示：克隆主项目时，同时初始化并下载项目引用的
+Git 子模块。本项目没有把 `f2` 的源码复制到当前仓库，而是记录了对
+[`Johnserf-Seed/f2`](https://github.com/Johnserf-Seed/f2) 指定版本的引用。
+
+上面的命令等价于：
+
+```powershell
+git clone https://github.com/guojunchao0201/dy-download.git
+cd dy-download
+git submodule update --init --recursive
+```
+
+如果只执行普通的 `git clone`，`f2` 目录不会包含可用源码，首次安装将无法正常完成。
+
 如果已经普通克隆，可补充执行：
 
 ```powershell
